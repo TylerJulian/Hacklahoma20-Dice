@@ -9,6 +9,17 @@ Created on Sun Feb  9 03:10:25 2020
 
 import cv2
 import numpy as np
+import eventlet
+import socketio
+
+sio = socketio.Server(cors_allowed_origins='*')
+app = socketio.WSGIApp(sio)
+
+last_result = -1
+
+cap = cv2.VideoCapture(2, cv2.CAP_DSHOW)  # '0' is the webcam's ID. usually it is 0 or 1. 'cap' is the video object.
+cap.set(15, -4)  # '15' references video's brightness. '-4' sets the brightness.
+
 def diceParser():
     
     lastSum = 0
@@ -18,9 +29,6 @@ def diceParser():
     min_circularity = .3
     min_inertia_ratio = .5
 
-    cap = cv2.VideoCapture(0)               # '0' is the webcam's ID. usually it is 0 or 1. 'cap' is the video object.
-    cap.set(15, -4)                         # '15' references video's brightness. '-4' sets the brightness.
-
     counter = 0                             # script will use a counter to handle FPS.
     readings = [0, 0]                       # lists are used to track the number of pips.
     display = [0, 0]
@@ -28,12 +36,12 @@ def diceParser():
     keyPointCoord = []
 
     while True:
-        if counter >= 90000:                # set maximum sizes for variables and lists to save memory.
-            counter = 0
-            readings = [0, 0]
-            display = [0, 0]
 
-        ret, im = cap.read()   
+        ret, im = cap.read()
+        if not ret:
+            print("Bad capture device!")
+            break
+
         grayFrame = cv2.cvtColor(im, cv2.COLOR_BGR2GRAY)
         grayFrame = cv2.cvtColor(grayFrame, cv2.COLOR_GRAY2BGR)
         im = grayFrame
@@ -65,7 +73,14 @@ def diceParser():
         # here we draw keypoints on the frame.
         im_with_keypoints = cv2.drawKeypoints(im, keypoints, np.array([]), (0, 0, 255), cv2.DRAW_MATCHES_FLAGS_DRAW_RICH_KEYPOINTS)
 
-        cv2.imshow("Dice Reader", im_with_keypoints)            # display the frame with keypoints added.
+        # # Display cam with drawn points
+        # cv2.imshow("Dice Reader", im_with_keypoints)
+
+        if counter >= 500:                # set maximum sizes for variables and lists to save memory.
+            counter = 0
+            readings = [0, 0]
+            display = [0, 0]
+            break
 
         reading = len(keypoints)                                # 'reading' is the number of blobs/pips
 
@@ -117,12 +132,36 @@ def diceParser():
             
             #cv2.PutText(im_with_keypoints, str(msg), (45,45), cv2.FONT_HERSHEY_SIMPLEX, (0,0,255))
         counter += 1
+
+        cv2.waitKey()
  
-        k = cv2.waitKey(30) & 0xff                              # press [Esc] to exit.
-        if k == 27:
-            break
+        # k = cv2.waitKey(30) & 0xff                              # press [Esc] to exit.
+        # if k == 27:
+        #     break
   
-    cv2.destroyAllWindows()
+    # cv2.destroyAllWindows()
                 
     #print(lastSum)
+    global last_result
+    last_result = lastSum
     return lastSum
+
+@sio.event
+def connect(sid, environ):
+    print('connection established')
+    global last_result
+    if last_result != -1:
+        sio.emit('receive_dice', last_result)
+
+@sio.event
+def get_dice(sid):
+    result = diceParser()
+    print(result)
+    sio.emit('receive_dice', result)
+
+@sio.event
+def disconnect(sid):
+    print('disconnected from server')
+
+if __name__ == '__main__':
+    eventlet.wsgi.server(eventlet.listen(('', 5005)), app)

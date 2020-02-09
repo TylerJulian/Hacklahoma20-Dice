@@ -1,0 +1,25 @@
+<html>
+    <head>
+        <style>
+
+        </style>
+    </head>
+    <body>
+        <p id="diceResults"></p>
+        <button onclick="clickHandler()">Load Dice</button>
+    </body>
+    <script>
+        var socket = null;
+        function loadSocket() {
+            socket = io('http://localhost:5005');
+            socket.on('connect', function(){ console.log("connected" )});
+            socket.on('receive_dice', function(data){ document.getElementById('diceResults').innerHTML = data });
+            socket.on('disconnect', function(){ console.log("disconnected") });
+        }
+
+        function clickHandler() {
+            socket.emit('get_dice');
+        }
+    </script>
+    <script src="https://cdn.jsdelivr.net/npm/socket.io-client@2/dist/socket.io.js" onload="loadSocket()"></script>
+</html>
